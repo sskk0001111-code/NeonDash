@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Neon Color Dash</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <title>Magnet Tether</title>
   <style>
     * {
       margin: 0;
@@ -38,8 +37,8 @@
       width: 100%;
       height: 100%;
       display: block;
-      background: radial-gradient(circle at 50% 50%, #0c0d1e 0%, #030308 100%);
-      box-shadow: 0 0 30px rgba(0, 243, 255, 0.15);
+      background: radial-gradient(circle at 50% 70%, #120a1f 0%, #030308 100%);
+      box-shadow: 0 0 30px rgba(162, 0, 255, 0.15);
     }
     #ui-layer {
       position: absolute;
@@ -58,15 +57,10 @@
       font-weight: 800;
       letter-spacing: 1.5px;
       text-transform: uppercase;
-      text-shadow: 0 0 12px rgba(0, 243, 255, 0.7);
+      text-shadow: 0 0 12px rgba(162, 0, 255, 0.7);
     }
     #score-val {
       font-size: 38px;
-    }
-    #high-score-val {
-      font-size: 15px;
-      color: #00f3ff;
-      opacity: 0.9;
     }
     #game-over-screen {
       position: absolute;
@@ -82,12 +76,13 @@
       align-items: center;
       gap: 14px;
       pointer-events: auto;
+      z-index: 10;
     }
     .game-over-title {
       font-size: 34px;
       font-weight: 900;
-      color: #ff007f;
-      text-shadow: 0 0 18px rgba(255, 0, 127, 0.8);
+      color: #ff004c;
+      text-shadow: 0 0 18px rgba(255, 0, 76, 0.8);
       letter-spacing: 2px;
     }
     .stats-label {
@@ -116,206 +111,177 @@
     <div id="ui-layer">
       <div>
         <div class="hud-text" id="score-val">0</div>
-        <div class="hud-text" id="high-score-val">TOP: --</div>
       </div>
     </div>
 
     <div id="game-over-screen">
-      <div class="game-over-title">CRASHED!</div>
+      <div class="game-over-title">SHATTERED!</div>
       <div class="stats-label" id="final-score-val">SCORE: 0</div>
-      <div class="stats-label" id="leaderboard-status" style="font-size: 13px; color: #aaa;">Syncing Score...</div>
-      <div class="action-prompt">TAP ANYWHERE TO REPLAY</div>
+      <div class="action-prompt">TAP ANYWHERE TO RESTART</div>
     </div>
   </div>
 
   <script>
-    // --- SUPABASE CLIENT CONFIG ---
-    const SUPABASE_URL = "https://mgymflakbdrqviutkdhq.supabase.co";
-    const SUPABASE_KEY = "sb_publishable_zFgsgiqHo6rrNAj8KAX1FQ_Fq3rHP6-";
-    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
     const scoreVal = document.getElementById("score-val");
-    const highScoreVal = document.getElementById("high-score-val");
     const gameOverScreen = document.getElementById("game-over-screen");
     const finalScoreVal = document.getElementById("final-score-val");
-    const lbStatus = document.getElementById("leaderboard-status");
 
     const V_WIDTH = 360;
     const V_HEIGHT = 640;
     canvas.width = V_WIDTH;
     canvas.height = V_HEIGHT;
 
-    const NEON_COLORS = [
-      { hex: "#ff007f", glow: "rgba(255, 0, 127, 0.6)" }, // Pink
-      { hex: "#00f3ff", glow: "rgba(0, 243, 255, 0.6)" }, // Cyan
-      { hex: "#ffe600", glow: "rgba(255, 230, 0, 0.6)" }  // Yellow
-    ];
-
-    let player = {
-      x: V_WIDTH / 2,
-      y: V_HEIGHT - 90,
-      radius: 22,
-      colorIndex: 0,
-      scalePunch: 1.0
-    };
-
-    let obstacles = [];
-    let particles = [];
-    let score = 0;
-    let globalHighScore = 0;
-    let baseSpeed = 4.2;
-    let spawnTimer = 0;
+    // Game Core State
     let isGameOver = false;
+    let score = 0;
+    let baseSpeed = 2.5;
+    let spawnTimer = 0;
+    let enemies = [];
+    let particles = [];
 
-    // --- LEADERBOARD LOGIC ---
-    async function fetchGlobalTopScore() {
-      try {
-        const { data, error } = await supabaseClient
-          .from("leaderboard")
-          .select("score")
-          .order("score", { ascending: false })
-          .limit(1);
+    // Magnet Tether Physics
+    let cx = V_WIDTH / 2;
+    let cy = V_HEIGHT - 180;
+    let angle = 0;
+    let rotationSpeed = 0.04;
+    
+    let isPulling = false;
+    let minRadius = 35;
+    let maxRadius = 140;
+    let currentRadius = maxRadius;
+    const ballRadius = 15;
 
-        if (!error && data && data.length > 0) {
-          globalHighScore = data[0].score;
-          highScoreVal.innerText = "TOP: " + globalHighScore;
-        }
-      } catch (e) {
-        console.warn("Offline or load error", e);
-      }
-    }
-    fetchGlobalTopScore();
+    let b1 = { x: 0, y: 0 };
+    let b2 = { x: 0, y: 0 };
 
-    async function pushScoreToLeaderboard(finalScore) {
-      if (finalScore <= 0) {
-        lbStatus.innerText = "Score recorded locally";
-        return;
-      }
-      lbStatus.innerText = "Saving to Leaderboard...";
-      try {
-        const { error } = await supabaseClient
-          .from("leaderboard")
-          .insert([{ player_name: "Player", score: finalScore }]);
-        
-        if (!error) {
-          lbStatus.innerText = "Score saved online!";
-          fetchGlobalTopScore();
-        } else {
-          lbStatus.innerText = "Offline mode";
-        }
-      } catch (err) {
-        lbStatus.innerText = "Could not sync score";
-      }
-    }
-
-    // --- INPUT CONTROLS ---
+    // Inputs
     window.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       if (isGameOver) {
         restartGame();
         return;
       }
-      // Cycle neon color
-      player.colorIndex = (player.colorIndex + 1) % NEON_COLORS.length;
-      player.scalePunch = 1.28;
+      isPulling = true;
+    });
+
+    window.addEventListener("pointerup", (e) => {
+      e.preventDefault();
+      isPulling = false;
     });
 
     function restartGame() {
-      obstacles = [];
+      enemies = [];
       particles = [];
       score = 0;
-      baseSpeed = 4.2;
+      baseSpeed = 2.5;
       spawnTimer = 0;
-      player.colorIndex = 0;
+      currentRadius = maxRadius;
+      isPulling = false;
       scoreVal.innerText = "0";
       gameOverScreen.style.display = "none";
       isGameOver = false;
     }
 
-    function createObstacle() {
-      const colorIdx = Math.floor(Math.random() * NEON_COLORS.length);
-      obstacles.push({
-        x: 25,
-        y: -40,
-        width: V_WIDTH - 50,
-        height: 24,
-        colorIndex: colorIdx,
-        cleared: false
-      });
+    function createEnemy() {
+      const radius = 16;
+      const x = Math.random() * (V_WIDTH - radius * 2) + radius;
+      enemies.push({ x: x, y: -30, radius: radius });
+    }
+
+    function createExplosion(x, y, color) {
+      for (let i = 0; i < 15; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const vel = 2 + Math.random() * 4;
+        particles.push({
+          x: x, y: y,
+          vx: Math.cos(ang) * vel, vy: Math.sin(ang) * vel,
+          life: 1.0, color: color
+        });
+      }
     }
 
     function triggerCrash() {
       isGameOver = true;
       finalScoreVal.innerText = "SCORE: " + score;
       gameOverScreen.style.display = "flex";
-      pushScoreToLeaderboard(score);
     }
 
-    function createBurst(x, y, color) {
-      for (let i = 0; i < 16; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const vel = 2 + Math.random() * 5;
-        particles.push({
-          x: x,
-          y: y,
-          vx: Math.cos(angle) * vel,
-          vy: Math.sin(angle) * vel,
-          life: 1.0,
-          color: color
-        });
-      }
+    // Line-Circle Intersection Math
+    function isLaserCuttingEnemy(a, b, circle) {
+      const distSq = (p1, p2) => (p1.x - p2.x)**2 + (p1.y - p2.y)**2;
+      const lenSq = distSq(a, b);
+      if (lenSq === 0) return false;
+
+      let t = ((circle.x - a.x) * (b.x - a.x) + (circle.y - a.y) * (b.y - a.y)) / lenSq;
+      t = Math.max(0, Math.min(1, t));
+
+      const closestPoint = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
+      return distSq(circle, closestPoint) < (circle.radius * circle.radius);
     }
 
-    // --- GAME ENGINE LOOP ---
-    function update(dt) {
+    function isBallHittingEnemy(ball, enemy) {
+      const dx = ball.x - enemy.x;
+      const dy = ball.y - enemy.y;
+      return (dx * dx + dy * dy) < ((ballRadius + enemy.radius) * (ballRadius + enemy.radius));
+    }
+
+    function update() {
       if (isGameOver) return;
 
-      if (player.scalePunch > 1.0) {
-        player.scalePunch = Math.max(1.0, player.scalePunch - 0.04);
-      }
+      // Update Tether Physics
+      angle += rotationSpeed;
+      const targetRadius = isPulling ? minRadius : maxRadius;
+      currentRadius += (targetRadius - currentRadius) * 0.15; // Smooth spring effect
 
+      b1.x = cx + Math.cos(angle) * currentRadius;
+      b1.y = cy + Math.sin(angle) * currentRadius;
+      b2.x = cx + Math.cos(angle + Math.PI) * currentRadius;
+      b2.y = cy + Math.sin(angle + Math.PI) * currentRadius;
+
+      // Enemy Spawning
       spawnTimer++;
-      const currentSpawnDelay = Math.max(55, 95 - Math.floor(score * 0.8));
+      const currentSpawnDelay = Math.max(40, 80 - Math.floor(score * 1.5));
       if (spawnTimer >= currentSpawnDelay) {
-        createObstacle();
+        createEnemy();
         spawnTimer = 0;
       }
 
-      const activeSpeed = baseSpeed + (score * 0.08);
+      const activeSpeed = baseSpeed + (score * 0.05);
 
-      for (let i = obstacles.length - 1; i >= 0; i--) {
-        const obs = obstacles[i];
-        obs.y += activeSpeed;
+      // Enemy Logic
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        const en = enemies[i];
+        en.y += activeSpeed;
 
-        // Collision Check (AABB with circle)
-        const closestY = Math.max(obs.y, Math.min(player.y, obs.y + obs.height));
-        const closestX = Math.max(obs.x, Math.min(player.x, obs.x + obs.width));
-        const distX = player.x - closestX;
-        const distY = player.y - closestY;
+        // 1. Check Ball Collision (Game Over)
+        if (isBallHittingEnemy(b1, en) || isBallHittingEnemy(b2, en)) {
+          createExplosion(en.x, en.y, "#ff004c");
+          triggerCrash();
+          return;
+        }
 
-        if ((distX * distX + distY * distY) < (player.radius * player.radius)) {
-          if (player.colorIndex === obs.colorIndex) {
-            createBurst(player.x, obs.y + obs.height / 2, NEON_COLORS[obs.colorIndex].hex);
-            obstacles.splice(i, 1);
-            score++;
-            scoreVal.innerText = score;
-          } else {
-            triggerCrash();
-            return;
-          }
-        } else if (obs.y > V_HEIGHT + 60) {
-          obstacles.splice(i, 1);
+        // 2. Check Laser Collision (Slice / Score)
+        if (isLaserCuttingEnemy(b1, b2, en)) {
+          createExplosion(en.x, en.y, "#00f3ff"); // Blue particle explosion
+          enemies.splice(i, 1);
+          score++;
+          scoreVal.innerText = score;
+          continue;
+        }
+
+        // Remove if off screen
+        if (en.y > V_HEIGHT + 50) {
+          enemies.splice(i, 1);
         }
       }
 
-      // Particles update
+      // Particles Update
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
-        p.x += p.vx;
-        p.y += p.vy;
-        p.life -= 0.045;
+        p.x += p.vx; p.y += p.vy;
+        p.life -= 0.04;
         if (p.life <= 0) particles.splice(i, 1);
       }
     }
@@ -323,49 +289,67 @@
     function render() {
       ctx.clearRect(0, 0, V_WIDTH, V_HEIGHT);
 
-      // Draw Obstacles
-      for (const obs of obstacles) {
-        const conf = NEON_COLORS[obs.colorIndex];
-        ctx.shadowBlur = 16;
-        ctx.shadowColor = conf.glow;
-        ctx.fillStyle = conf.hex;
-        ctx.beginPath();
-        ctx.roundRect(obs.x, obs.y, obs.width, obs.height, 12);
-        ctx.fill();
+      // Draw Laser Beam
+      ctx.beginPath();
+      ctx.moveTo(b1.x, b1.y);
+      ctx.lineTo(b2.x, b2.y);
+      ctx.strokeStyle = "#00f3ff";
+      ctx.lineWidth = 4;
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = "#00f3ff";
+      ctx.stroke();
 
-        // White core accent
-        ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-        ctx.fillRect(obs.x + 16, obs.y + obs.height / 2 - 2, obs.width - 32, 4);
+      // Draw Core Laser Line (White inside)
+      ctx.beginPath();
+      ctx.moveTo(b1.x, b1.y);
+      ctx.lineTo(b2.x, b2.y);
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1.5;
+      ctx.shadowBlur = 0;
+      ctx.stroke();
+
+      // Draw Enemies
+      for (const en of enemies) {
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = "#ff004c";
+        ctx.fillStyle = "#ff004c";
+        ctx.beginPath();
+        ctx.arc(en.x, en.y, en.radius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(en.x, en.y, en.radius * 0.4, 0, Math.PI * 2);
+        ctx.fill();
       }
 
       // Draw Particles
       for (const p of particles) {
-        ctx.shadowBlur = 8;
+        ctx.shadowBlur = 10;
         ctx.shadowColor = p.color;
         ctx.fillStyle = p.color;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 3.5 * p.life, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, 3 * p.life, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      // Draw Player
-      const pConf = NEON_COLORS[player.colorIndex];
-      const r = player.radius * player.scalePunch;
+      // Draw Magnet Balls
+      const drawBall = (ball) => {
+        ctx.shadowBlur = 25;
+        ctx.shadowColor = "#a200ff";
+        ctx.fillStyle = "#a200ff";
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ballRadius, 0, Math.PI * 2);
+        ctx.fill();
 
-      // Outer Glow Aura
-      ctx.shadowBlur = 24;
-      ctx.shadowColor = pConf.glow;
-      ctx.fillStyle = pConf.hex;
-      ctx.beginPath();
-      ctx.arc(player.x, player.y, r, 0, Math.PI * 2);
-      ctx.fill();
-
-      // White Center Bulb
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = "#ffffff";
-      ctx.beginPath();
-      ctx.arc(player.x, player.y, r * 0.4, 0, Math.PI * 2);
-      ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ballRadius * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+      };
+      drawBall(b1);
+      drawBall(b2);
     }
 
     function gameLoop() {
