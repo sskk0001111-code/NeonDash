@@ -51,6 +51,7 @@
       flex-direction: column;
       justify-content: space-between;
       padding: 24px 20px;
+      z-index: 5;
     }
     .hud-text {
       color: #ffffff;
@@ -62,21 +63,42 @@
     #score-val {
       font-size: 38px;
     }
-    #game-over-screen {
+    
+    /* Menus */
+    .menu-screen {
       position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(5, 5, 10, 0.88);
-      backdrop-filter: blur(4px);
-      display: none;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(5, 5, 10, 0.9);
+      backdrop-filter: blur(5px);
+      display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      gap: 14px;
+      gap: 20px;
       pointer-events: auto;
       z-index: 10;
+    }
+    .title-text {
+      font-size: 34px;
+      font-weight: 900;
+      color: #00f3ff;
+      text-shadow: 0 0 18px rgba(0, 243, 255, 0.8);
+      letter-spacing: 2px;
+      margin-bottom: 20px;
+    }
+    .btn {
+      background: transparent;
+      border: 2px solid #a200ff;
+      color: #fff;
+      font-size: 18px;
+      font-weight: 700;
+      padding: 12px 30px;
+      border-radius: 8px;
+      box-shadow: 0 0 15px rgba(162, 0, 255, 0.4);
+      cursor: pointer;
+    }
+    .btn:active {
+      background: rgba(162, 0, 255, 0.3);
     }
     .game-over-title {
       font-size: 34px;
@@ -90,17 +112,6 @@
       font-size: 18px;
       font-weight: 600;
     }
-    .action-prompt {
-      margin-top: 15px;
-      font-size: 14px;
-      color: #00f3ff;
-      letter-spacing: 1px;
-      animation: pulse 1.2s infinite alternate;
-    }
-    @keyframes pulse {
-      from { opacity: 0.4; }
-      to { opacity: 1; }
-    }
   </style>
 </head>
 <body>
@@ -108,16 +119,22 @@
   <div id="game-container">
     <canvas id="gameCanvas"></canvas>
     
-    <div id="ui-layer">
-      <div>
-        <div class="hud-text" id="score-val">0</div>
-      </div>
+    <div id="ui-layer" style="display: none;">
+      <div class="hud-text" id="score-val">0</div>
     </div>
 
-    <div id="game-over-screen">
+    <!-- Start Menu -->
+    <div id="start-menu" class="menu-screen">
+      <div class="title-text">MAGNET TETHER</div>
+      <button class="btn" onclick="startGame(1)">1 PLAYER</button>
+      <button class="btn" onclick="startGame(2)">2 PLAYER (CO-OP)</button>
+    </div>
+
+    <!-- Game Over Menu -->
+    <div id="game-over-screen" class="menu-screen" style="display: none;">
       <div class="game-over-title">SHATTERED!</div>
       <div class="stats-label" id="final-score-val">SCORE: 0</div>
-      <div class="action-prompt">TAP ANYWHERE TO RESTART</div>
+      <button class="btn" onclick="showMainMenu()" style="margin-top: 20px;">MAIN MENU</button>
     </div>
   </div>
 
@@ -125,6 +142,8 @@
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
     const scoreVal = document.getElementById("score-val");
+    const uiLayer = document.getElementById("ui-layer");
+    const startMenu = document.getElementById("start-menu");
     const gameOverScreen = document.getElementById("game-over-screen");
     const finalScoreVal = document.getElementById("final-score-val");
 
@@ -133,56 +152,104 @@
     canvas.width = V_WIDTH;
     canvas.height = V_HEIGHT;
 
-    // Game Core State
+    // States
     let isGameOver = false;
+    let isGameRunning = false;
+    let mode = 1; // 1 = Single, 2 = Multiplayer
     let score = 0;
     let baseSpeed = 2.5;
     let spawnTimer = 0;
     let enemies = [];
     let particles = [];
 
-    // Magnet Tether Physics
+    // Physics
     let cx = V_WIDTH / 2;
     let cy = V_HEIGHT - 180;
     let angle = 0;
     let rotationSpeed = 0.04;
     
-    let isPulling = false;
+    let isPullingLeft = false;
+    let isPullingRight = false;
+    
     let minRadius = 35;
     let maxRadius = 140;
-    let currentRadius = maxRadius;
+    let radiusLeft = maxRadius;
+    let radiusRight = maxRadius;
     const ballRadius = 15;
 
     let b1 = { x: 0, y: 0 };
     let b2 = { x: 0, y: 0 };
 
-    // Inputs
-    window.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      if (isGameOver) {
-        restartGame();
-        return;
-      }
-      isPulling = true;
-    });
+    function startGame(selectedMode) {
+      mode = selectedMode;
+      startMenu.style.display = "none";
+      uiLayer.style.display = "flex";
+      restartData();
+    }
 
-    window.addEventListener("pointerup", (e) => {
-      e.preventDefault();
-      isPulling = false;
-    });
+    function showMainMenu() {
+      gameOverScreen.style.display = "none";
+      startMenu.style.display = "flex";
+    }
 
-    function restartGame() {
+    function restartData() {
       enemies = [];
       particles = [];
       score = 0;
       baseSpeed = 2.5;
       spawnTimer = 0;
-      currentRadius = maxRadius;
-      isPulling = false;
+      radiusLeft = maxRadius;
+      radiusRight = maxRadius;
+      isPullingLeft = false;
+      isPullingRight = false;
       scoreVal.innerText = "0";
-      gameOverScreen.style.display = "none";
       isGameOver = false;
+      isGameRunning = true;
     }
+
+    // Input Handling (Multi-touch support)
+    function handleTouch(e, isDown) {
+      if (!isGameRunning || isGameOver) return;
+      
+      let leftTouch = false;
+      let rightTouch = false;
+
+      // Mouse support
+      if(e.type.includes("mouse")) {
+        const x = e.clientX - canvas.getBoundingClientRect().left;
+        if(mode === 1) {
+          leftTouch = rightTouch = true;
+        } else {
+          if(x < V_WIDTH/2) leftTouch = true;
+          else rightTouch = true;
+        }
+      } 
+      // Touch support
+      else if(e.touches) {
+        if(mode === 1 && e.touches.length > 0) {
+          leftTouch = rightTouch = true;
+        } else {
+          for (let i = 0; i < e.touches.length; i++) {
+            const x = e.touches[i].clientX - canvas.getBoundingClientRect().left;
+            if (x < V_WIDTH/2) leftTouch = true;
+            else rightTouch = true;
+          }
+        }
+      }
+
+      if (isDown) {
+        if (leftTouch) isPullingLeft = true;
+        if (rightTouch) isPullingRight = true;
+      } else {
+        isPullingLeft = leftTouch;
+        isPullingRight = rightTouch;
+      }
+    }
+
+    window.addEventListener("mousedown", (e) => handleTouch(e, true));
+    window.addEventListener("mouseup", (e) => handleTouch(e, false));
+    window.addEventListener("touchstart", (e) => { e.preventDefault(); handleTouch(e, true); }, {passive: false});
+    window.addEventListener("touchend", (e) => { e.preventDefault(); handleTouch(e, false); }, {passive: false});
 
     function createEnemy() {
       const radius = 16;
@@ -204,43 +271,45 @@
 
     function triggerCrash() {
       isGameOver = true;
+      isGameRunning = false;
+      uiLayer.style.display = "none";
       finalScoreVal.innerText = "SCORE: " + score;
       gameOverScreen.style.display = "flex";
     }
 
-    // Line-Circle Intersection Math
     function isLaserCuttingEnemy(a, b, circle) {
       const distSq = (p1, p2) => (p1.x - p2.x)**2 + (p1.y - p2.y)**2;
       const lenSq = distSq(a, b);
       if (lenSq === 0) return false;
-
       let t = ((circle.x - a.x) * (b.x - a.x) + (circle.y - a.y) * (b.y - a.y)) / lenSq;
       t = Math.max(0, Math.min(1, t));
-
-      const closestPoint = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
-      return distSq(circle, closestPoint) < (circle.radius * circle.radius);
+      const closest = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
+      return distSq(circle, closest) < (circle.radius * circle.radius);
     }
 
     function isBallHittingEnemy(ball, enemy) {
       const dx = ball.x - enemy.x;
       const dy = ball.y - enemy.y;
-      return (dx * dx + dy * dy) < ((ballRadius + enemy.radius) * (ballRadius + enemy.radius));
+      return (dx * dx + dy * dy) < ((ballRadius + enemy.radius)**2);
     }
 
     function update() {
-      if (isGameOver) return;
+      if (!isGameRunning) return;
 
-      // Update Tether Physics
       angle += rotationSpeed;
-      const targetRadius = isPulling ? minRadius : maxRadius;
-      currentRadius += (targetRadius - currentRadius) * 0.15; // Smooth spring effect
+      
+      const targetLeft = isPullingLeft ? minRadius : maxRadius;
+      const targetRight = isPullingRight ? minRadius : maxRadius;
+      
+      radiusLeft += (targetLeft - radiusLeft) * 0.15; 
+      radiusRight += (targetRight - radiusRight) * 0.15; 
 
-      b1.x = cx + Math.cos(angle) * currentRadius;
-      b1.y = cy + Math.sin(angle) * currentRadius;
-      b2.x = cx + Math.cos(angle + Math.PI) * currentRadius;
-      b2.y = cy + Math.sin(angle + Math.PI) * currentRadius;
+      // b1 is the "left side" of rotation, b2 is "right side"
+      b1.x = cx + Math.cos(angle) * radiusLeft;
+      b1.y = cy + Math.sin(angle) * radiusLeft;
+      b2.x = cx + Math.cos(angle + Math.PI) * radiusRight;
+      b2.y = cy + Math.sin(angle + Math.PI) * radiusRight;
 
-      // Enemy Spawning
       spawnTimer++;
       const currentSpawnDelay = Math.max(40, 80 - Math.floor(score * 1.5));
       if (spawnTimer >= currentSpawnDelay) {
@@ -250,34 +319,29 @@
 
       const activeSpeed = baseSpeed + (score * 0.05);
 
-      // Enemy Logic
       for (let i = enemies.length - 1; i >= 0; i--) {
         const en = enemies[i];
         en.y += activeSpeed;
 
-        // 1. Check Ball Collision (Game Over)
         if (isBallHittingEnemy(b1, en) || isBallHittingEnemy(b2, en)) {
           createExplosion(en.x, en.y, "#ff004c");
           triggerCrash();
           return;
         }
 
-        // 2. Check Laser Collision (Slice / Score)
         if (isLaserCuttingEnemy(b1, b2, en)) {
-          createExplosion(en.x, en.y, "#00f3ff"); // Blue particle explosion
+          createExplosion(en.x, en.y, "#00f3ff"); 
           enemies.splice(i, 1);
           score++;
           scoreVal.innerText = score;
           continue;
         }
 
-        // Remove if off screen
         if (en.y > V_HEIGHT + 50) {
           enemies.splice(i, 1);
         }
       }
 
-      // Particles Update
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
         p.x += p.vx; p.y += p.vy;
@@ -289,7 +353,9 @@
     function render() {
       ctx.clearRect(0, 0, V_WIDTH, V_HEIGHT);
 
-      // Draw Laser Beam
+      if(!isGameRunning && startMenu.style.display !== "none") return;
+
+      // Draw Laser 
       ctx.beginPath();
       ctx.moveTo(b1.x, b1.y);
       ctx.lineTo(b2.x, b2.y);
@@ -299,7 +365,6 @@
       ctx.shadowColor = "#00f3ff";
       ctx.stroke();
 
-      // Draw Core Laser Line (White inside)
       ctx.beginPath();
       ctx.moveTo(b1.x, b1.y);
       ctx.lineTo(b2.x, b2.y);
@@ -308,7 +373,7 @@
       ctx.shadowBlur = 0;
       ctx.stroke();
 
-      // Draw Enemies
+      // Enemies
       for (const en of enemies) {
         ctx.shadowBlur = 15;
         ctx.shadowColor = "#ff004c";
@@ -323,7 +388,7 @@
         ctx.fill();
       }
 
-      // Draw Particles
+      // Particles
       for (const p of particles) {
         ctx.shadowBlur = 10;
         ctx.shadowColor = p.color;
@@ -333,7 +398,7 @@
         ctx.fill();
       }
 
-      // Draw Magnet Balls
+      // Balls
       const drawBall = (ball) => {
         ctx.shadowBlur = 25;
         ctx.shadowColor = "#a200ff";
