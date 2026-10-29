@@ -207,14 +207,12 @@
       isGameRunning = true;
     }
 
-    // Input Handling (Multi-touch support)
     function handleTouch(e, isDown) {
       if (!isGameRunning || isGameOver) return;
       
       let leftTouch = false;
       let rightTouch = false;
 
-      // Mouse support
       if(e.type.includes("mouse")) {
         const x = e.clientX - canvas.getBoundingClientRect().left;
         if(mode === 1) {
@@ -224,7 +222,6 @@
           else rightTouch = true;
         }
       } 
-      // Touch support
       else if(e.touches) {
         if(mode === 1 && e.touches.length > 0) {
           leftTouch = rightTouch = true;
@@ -246,10 +243,29 @@
       }
     }
 
-    window.addEventListener("mousedown", (e) => handleTouch(e, true));
-    window.addEventListener("mouseup", (e) => handleTouch(e, false));
-    window.addEventListener("touchstart", (e) => { e.preventDefault(); handleTouch(e, true); }, {passive: false});
-    window.addEventListener("touchend", (e) => { e.preventDefault(); handleTouch(e, false); }, {passive: false});
+    // Touch Event Fixes
+    function isButton(e) {
+      return e.target.tagName === 'BUTTON' || e.target.closest('.btn');
+    }
+
+    window.addEventListener("mousedown", (e) => {
+      if (isButton(e)) return;
+      handleTouch(e, true);
+    });
+    window.addEventListener("mouseup", (e) => {
+      if (isButton(e)) return;
+      handleTouch(e, false);
+    });
+    window.addEventListener("touchstart", (e) => { 
+      if (isButton(e)) return;
+      e.preventDefault(); 
+      handleTouch(e, true); 
+    }, {passive: false});
+    window.addEventListener("touchend", (e) => { 
+      if (isButton(e)) return;
+      e.preventDefault(); 
+      handleTouch(e, false); 
+    }, {passive: false});
 
     function createEnemy() {
       const radius = 16;
@@ -304,7 +320,6 @@
       radiusLeft += (targetLeft - radiusLeft) * 0.15; 
       radiusRight += (targetRight - radiusRight) * 0.15; 
 
-      // b1 is the "left side" of rotation, b2 is "right side"
       b1.x = cx + Math.cos(angle) * radiusLeft;
       b1.y = cy + Math.sin(angle) * radiusLeft;
       b2.x = cx + Math.cos(angle + Math.PI) * radiusRight;
