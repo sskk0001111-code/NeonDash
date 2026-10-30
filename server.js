@@ -6,9 +6,12 @@ const app = express();
 app.use(express.json());
 app.use(cors({ origin: '*' }));
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
+// SESHE SLASH THAKLE REMOVE KORAR SAFEGUARD:
+const rawUrl = process.env.SUPABASE_URL || '';
+const cleanUrl = rawUrl.replace(/\/+$/, '').replace(/\/rest\/v1\/?$/, '');
+
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+const supabase = createClient(cleanUrl, SUPABASE_SERVICE_KEY);
 
 app.get('/', (req, res) => {
   res.send('Krishi Hisab API Live');
@@ -19,17 +22,21 @@ app.post('/api/log', async (req, res) => {
     const { crop_type, land_area } = req.body;
     
     if (!crop_type || land_area === undefined) {
-      return res.status(400).json({ error: 'crop_type and land_area are required' });
+      return res.status(400).json({ error: 'Data missing' });
     }
 
     const { data, error } = await supabase
       .from('tool_logs')
-      .insert([{ crop_type, land_area: parseFloat(land_area) }]);
+      .insert([{ crop_type: String(crop_type), land_area: Number(land_area) }]);
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase DB error:', error);
+      return res.status(500).json({ error: error.message });
+    }
 
-    return res.json({ success: true, message: 'Data logged successfully' });
+    return res.json({ success: true, message: 'Saved to Supabase!' });
   } catch (err) {
+    console.error('Catch error:', err);
     return res.status(500).json({ error: err.message });
   }
 });
