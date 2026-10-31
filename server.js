@@ -39,7 +39,7 @@ Kono unnecessary gyaan, bhumika ba English chara shudhu 3-te bullet point likho.
         'Authorization': `Bearer ${groqApiKey}`
       },
       body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
+        model: 'openai/gpt-oss-20b',
         messages: [
           {
             role: 'system',
