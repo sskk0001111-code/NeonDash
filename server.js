@@ -6,16 +6,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Render Environment theke key load hobe
 const apiKey = process.env.GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(apiKey);
 
-// Basic check route
 app.get('/', (req, res) => {
   res.send('Krishi Hisab Backend is Running!');
 });
 
-// AI Advisor Route
 app.post('/api/ai-advisor', async (req, res) => {
   try {
     const { crop_type, land_area, calculations } = req.body;
@@ -25,24 +22,24 @@ app.post('/api/ai-advisor', async (req, res) => {
     }
 
     const prompt = `
-Tumi ekjon pro-active Krishi Bigyani (Agricultural Scientist) West Bengal chashider jonno.
-Foshol / Prokolpo: ${crop_type}
+Tumi ekjon Krishi Bigyani (Agricultural Scientist) West Bengal chashider jonno.
+Foshol: ${crop_type}
 Jomir poriman: ${land_area} bigha/katha
-Hisab krito sar/upadan: ${JSON.stringify(calculations)}
+Hisab krito upadan: ${JSON.stringify(calculations)}
 
-Chashike shudhu 3-te short bullet point-e exact ebong actionable poramorsho dao Bangla te:
-1. Sar proyog-er shothik somoy (Kokhono eksathe sob sar dite baron koro, koto bar bhenge debe bolo).
+Chashike shudhu 3-te bullet point-e direct ebong actionable poramorsho dao Bangla te:
+1. Sar proyog-er shothik somoy (Kokhono eksathe sob sar dite baron koro, koy bar bhenge debe bolo).
 2. Sech ba jol babosthapona.
-3. Ei foshle prothom 20-30 dine poka ba rog thekanor prothom shotorkota.
-Kono unnecessary gyaan, bhumika ba English chara shudhu 3-te bullet point likho.
+3. Prothom 20-30 dine rog ba poka thekanor shotorkota.
+Kono bhumika chara shudhu 3-te point likho.
 `;
 
-    // Try with gemini-1.5-flash-latest or gemini-2.0-flash
+    // 2.0-flash use korun (New standard on AI Studio)
     let model;
     try {
-      model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
-    } catch(e) {
       model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    } catch (e) {
+      model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     }
 
     const result = await model.generateContent(prompt);
@@ -54,7 +51,6 @@ Kono unnecessary gyaan, bhumika ba English chara shudhu 3-te bullet point likho.
     res.status(500).json({ error: "AI Poramorsho load kora jayni." });
   }
 });
-
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
