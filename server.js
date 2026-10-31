@@ -32,8 +32,8 @@ Chashike shudhu 3-te bullet point-e direct ebong actionable poramorsho dao Bangl
 Kono unnecessary gyaan, bhumika ba English chara shudhu 3-te point bullet hisebe likho.
 `;
 
-    // Direct official endpoint call
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    // Google-er instruction onujayi gemini-3.8-flash
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
 
     const apiResponse = await fetch(apiUrl, {
       method: 'POST',
@@ -65,7 +65,8 @@ Kono unnecessary gyaan, bhumika ba English chara shudhu 3-te point bullet hisebe
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+// Render dynamic port handling
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server listening on port ${PORT}`);
 });
