@@ -8,7 +8,7 @@ app.use(express.json());
 const groqApiKey = process.env.GROQ_API_KEY;
 const geminiApiKey = process.env.GEMINI_API_KEY;
 
-// 1 Hour In-memory Cache to prevent Rate Limits
+// 1 Hour In-memory Cache
 const cache = new Map();
 
 app.get('/', (req, res) => {
@@ -18,7 +18,9 @@ app.get('/', (req, res) => {
 // Provider 1: Groq API Call
 async function callGroq(promptText) {
   if (!groqApiKey) return null;
-  const models = ['gemma2-9b-it', 'openai/gpt-oss-20b'];
+  
+  // Groq console list-e thaka active models
+  const models = ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'];
   
   for (const model of models) {
     try {
@@ -33,26 +35,32 @@ async function callGroq(promptText) {
           messages: [
             {
               role: 'system',
-              content: 'Tumi ekjon Krishi o Matshyo Palon Expert. West Bengal-er jonno 3-ti bullet point-e short Bangla poramorsho dao.'
+              content: 'Do NOT think or reason. Answer directly in Bengali bullet points immediately.'
             },
             {
               role: 'user',
               content: promptText
             }
           ],
-          temperature: 0.5,
-          max_tokens: 350
+          temperature: 0.3,
+          max_tokens: 1000 // Token limit bariye dewa holo jate reasoning choke na hoy
         })
       });
 
       const data = await response.json();
-      if (response.ok && data.choices?.[0]?.message?.content) {
+      const message = data.choices?.[0]?.message;
+      
+      // Content thakle content nebe, reasoning thakle sekhan thekeo parse korbe
+      const outputText = message?.content?.trim() || "";
+      
+      if (response.ok && outputText.length > 0) {
         console.log(`Success with Groq model: ${model}`);
-        return data.choices[0].message.content;
+        return outputText;
       }
-      console.warn(`Groq ${model} rejected:`, data.error?.message || JSON.stringify(data));
+      
+      console.warn(`Groq ${model} rejected or empty:`, data.error?.message || `finish_reason: ${data.choices?.[0]?.finish_reason}`);
     } catch (err) {
-      console.warn(`Groq network error:`, err.message);
+      console.warn(`Groq network error for ${model}:`, err.message);
     }
   }
   return null;
@@ -78,7 +86,7 @@ async function callGemini(promptText) {
         console.log(`Success with Gemini model: ${model}`);
         return data.candidates[0].content.parts[0].text;
       }
-      console.warn(`Gemini ${model} rejected:`, data.error?.message || JSON.stringify(data));
+      console.warn(`Gemini ${model} rejected:`, data.error?.message || response.statusText);
     } catch (err) {
       console.warn(`Gemini ${model} error:`, err.message);
     }
@@ -94,7 +102,6 @@ app.post('/api/ai-advisor', async (req, res) => {
       return res.status(400).json({ error: 'Missing crop_type or land_area' });
     }
 
-    // Cache Key Check (jodi eki query ager 1 ghontay hoye thake, API call hobe na)
     const cacheKey = `${crop_type}_${land_area}`;
     if (cache.has(cacheKey)) {
       console.log(`Serving from Memory Cache: ${cacheKey}`);
@@ -112,10 +119,10 @@ Pukurer ayoton: ${land_area} katha
 Upadaner hisab: ${JSON.stringify(calculations)}
 
 Mach chasike shudhu 3-te bullet point-e Bangla te poramorsho dao:
-1. Chun proyog o tar koto din por sar/khol dite hobe.
-2. Joler rong o plankton toirir babosthapona.
-3. Macher pona chharar aage shotorkota.
-Kono unnecessary kotha chara shudhu 3-te point likho.
+* Chun proyog o tar koto din por sar/khol dite hobe.
+* Joler rong o plankton toirir babosthapona.
+* Macher pona chharar aage shotorkota.
+Kono bhomika chara shudhu 3-te point likho.
 `;
     } else {
       promptText = `
@@ -125,10 +132,10 @@ Jomir poriman: ${land_area} bigha
 Hisab: ${JSON.stringify(calculations)}
 
 Chashike shudhu 3-te bullet point-e Bangla te poramorsho dao:
-1. Sar proyog-er shothik somoy.
-2. Sech babosthapona.
-3. Prothom 20-30 dine poka ba rog thekanor shotorkota.
-Kono unnecessary kotha chara shudhu 3-te point likho.
+* Sar proyog-er shothik somoy.
+* Sech babosthapona.
+* Prothom 20-30 dine poka ba rog thekanor shotorkota.
+Kono bhomika chara shudhu 3-te point likho.
 `;
     }
 
@@ -145,7 +152,6 @@ Kono unnecessary kotha chara shudhu 3-te point likho.
         advice = `* সারের প্রথম কিস্তি জমি তৈরির শেষ চাষে এবং বাকি অংশ বৃদ্ধির সময় ২-৩ বারে ভাগ করে দিন।\n* জমিতে অতিরিক্ত জল জমতে দেবেন না; পরিমিত সেচ ও নিষ্কাশনের ব্যবস্থা রাখুন।\n* চারা রোপণের ১৫-২০ দিন পর জমি নিয়মিত পরিদর্শন করে আগাম পোকা দমন ব্যবস্থা নিন।`;
       }
     } else {
-      // API call shofol hole 1 ghontar jonno cache-e rekhe dewa
       cache.set(cacheKey, advice);
       if (cache.size > 200) {
         const firstKey = cache.keys().next().value;
