@@ -37,7 +37,14 @@ Chashike shudhu 3-te short bullet point-e exact ebong actionable poramorsho dao 
 Kono unnecessary gyaan, bhumika ba English chara shudhu 3-te bullet point likho.
 `;
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // Try with gemini-1.5-flash-latest or gemini-2.0-flash
+    let model;
+    try {
+      model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+    } catch(e) {
+      model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    }
+
     const result = await model.generateContent(prompt);
     const aiText = result.response.text();
 
@@ -47,6 +54,7 @@ Kono unnecessary gyaan, bhumika ba English chara shudhu 3-te bullet point likho.
     res.status(500).json({ error: "AI Poramorsho load kora jayni." });
   }
 });
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
