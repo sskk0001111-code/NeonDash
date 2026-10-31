@@ -11,6 +11,35 @@ app.get('/', (req, res) => {
   res.send('Krishi Hisab Backend is Running!');
 });
 
+async function callGemini(promptText) {
+  // Prathomic bhabe gemini-3.8-flash ebong fallback hishebe gemini-2.5-flash try korbe
+  const models = ['gemini-3.8-flash', 'gemini-2.5-flash'];
+  
+  for (const model of models) {
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: promptText }] }]
+        })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
+        return data.candidates[0].content.parts[0].text;
+      }
+      console.warn(`Model ${model} issue:`, data.error?.message || response.statusText);
+    } catch (err) {
+      console.warn(`Fetch failed for model ${model}:`, err.message);
+    }
+    // 503 ba rate limit thekate 1 second delay
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  return null;
+}
+
 app.post('/api/ai-advisor', async (req, res) => {
   try {
     const { crop_type, land_area, calculations } = req.body;
@@ -32,32 +61,13 @@ Chashike shudhu 3-te bullet point-e direct ebong actionable poramorsho dao Bangl
 Kono unnecessary gyaan, bhumika ba English chara shudhu 3-te point bullet hisebe likho.
 `;
 
-    // Google-er instruction onujayi gemini-3.8-flash
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
+    const advice = await callGemini(promptText);
 
-    const apiResponse = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [{ text: promptText }]
-          }
-        ]
-      })
-    });
-
-    const data = await apiResponse.json();
-
-    if (!apiResponse.ok) {
-      console.error("Gemini API Error Response:", JSON.stringify(data));
-      return res.status(500).json({ error: data.error?.message || "AI API call failed" });
+    if (advice) {
+      return res.json({ advice });
+    } else {
+      return res.status(503).json({ error: 'AI server ekhon busy, kichukkhon por abar chesta korun.' });
     }
-
-    const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || "Poramorsho toiri kora jayni.";
-    res.json({ advice: aiText });
 
   } catch (err) {
     console.error("Server Catch Error:", err);
@@ -65,7 +75,6 @@ Kono unnecessary gyaan, bhumika ba English chara shudhu 3-te point bullet hisebe
   }
 });
 
-// Render dynamic port handling
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server listening on port ${PORT}`);
