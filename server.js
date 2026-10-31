@@ -1,47 +1,54 @@
 const express = require('express');
 const cors = require('cors');
-const { createClient } = require('@supabase/supabase-js');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
+app.use(cors());
 app.use(express.json());
-app.use(cors({ origin: '*' }));
 
-// SESHE SLASH THAKLE REMOVE KORAR SAFEGUARD:
-const rawUrl = process.env.SUPABASE_URL || '';
-const cleanUrl = rawUrl.replace(/\/+$/, '').replace(/\/rest\/v1\/?$/, '');
+// Render Environment theke key load hobe
+const apiKey = process.env.GEMINI_API_KEY;
+const genAI = new GoogleGenerativeAI(apiKey);
 
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
-const supabase = createClient(cleanUrl, SUPABASE_SERVICE_KEY);
-
+// Basic check route
 app.get('/', (req, res) => {
-  res.send('Krishi Hisab API Live');
+  res.send('Krishi Hisab Backend is Running!');
 });
 
-app.post('/api/log', async (req, res) => {
+// AI Advisor Route
+app.post('/api/ai-advisor', async (req, res) => {
   try {
-    const { crop_type, land_area } = req.body;
-    
-    if (!crop_type || land_area === undefined) {
-      return res.status(400).json({ error: 'Data missing' });
+    const { crop_type, land_area, calculations } = req.body;
+
+    if (!crop_type || !land_area) {
+      return res.status(400).json({ error: 'Missing crop_type or land_area' });
     }
 
-    const { data, error } = await supabase
-      .from('tool_logs')
-      .insert([{ crop_type: String(crop_type), land_area: Number(land_area) }]);
+    const prompt = `
+Tumi ekjon pro-active Krishi Bigyani (Agricultural Scientist) West Bengal chashider jonno.
+Foshol / Prokolpo: ${crop_type}
+Jomir poriman: ${land_area} bigha/katha
+Hisab krito sar/upadan: ${JSON.stringify(calculations)}
 
-    if (error) {
-      console.error('Supabase DB error:', error);
-      return res.status(500).json({ error: error.message });
-    }
+Chashike shudhu 3-te short bullet point-e exact ebong actionable poramorsho dao Bangla te:
+1. Sar proyog-er shothik somoy (Kokhono eksathe sob sar dite baron koro, koto bar bhenge debe bolo).
+2. Sech ba jol babosthapona.
+3. Ei foshle prothom 20-30 dine poka ba rog thekanor prothom shotorkota.
+Kono unnecessary gyaan, bhumika ba English chara shudhu 3-te bullet point likho.
+`;
 
-    return res.json({ success: true, message: 'Saved to Supabase!' });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(prompt);
+    const aiText = result.response.text();
+
+    res.json({ advice: aiText });
   } catch (err) {
-    console.error('Catch error:', err);
-    return res.status(500).json({ error: err.message });
+    console.error("AI Error:", err);
+    res.status(500).json({ error: "AI Poramorsho load kora jayni." });
   }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server listening on port ${PORT}`);
 });
