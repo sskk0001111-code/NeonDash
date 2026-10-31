@@ -20,7 +20,7 @@ app.post('/api/ai-advisor', async (req, res) => {
     }
 
     const promptText = `
-Tumi ekjon Krishi Bigyani (Agricultural Scientist) West Bengal chashider jonno.
+Tumi ekjon pro-active Krishi Bigyani (Agricultural Scientist) West Bengal chashider jonno.
 Foshol / Prokolpo: ${crop_type}
 Jomir poriman: ${land_area} bigha/katha
 Hisab krito sar/upadan: ${JSON.stringify(calculations)}
@@ -39,11 +39,11 @@ Kono unnecessary gyaan, bhumika ba English chara shudhu 3-te bullet point likho.
         'Authorization': `Bearer ${groqApiKey}`
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'llama-3.1-8b-instant',
         messages: [
           {
             role: 'system',
-            content: 'Tumi ekjon pro-active Krishi Bigyani. Shudhu Bangla te bullet points likhbe.'
+            content: 'Tumi ekjon Krishi Bigyani. Shudhu Bangla te direct bullet points likhbe.'
           },
           {
             role: 'user',
