@@ -6,10 +6,78 @@ app.use(cors());
 app.use(express.json());
 
 const groqApiKey = process.env.GROQ_API_KEY;
+const geminiApiKey = process.env.GEMINI_API_KEY;
 
 app.get('/', (req, res) => {
   res.send('Krishi Hisab Backend is Running!');
 });
+
+// Provider 1: Groq API Call
+async function callGroq(promptText) {
+  if (!groqApiKey) return null;
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${groqApiKey}`
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-oss-20b',
+        messages: [
+          {
+            role: 'system',
+            content: 'Tumi ekjon Krishi Bigyani. Shudhu Bangla te 3-te actionable bullet points likhbe.'
+          },
+          {
+            role: 'user',
+            content: promptText
+          }
+        ],
+        temperature: 0.5,
+        max_tokens: 500
+      })
+    });
+
+    const data = await response.json();
+    if (response.ok && data.choices?.[0]?.message?.content) {
+      console.log("Success with Groq API");
+      return data.choices[0].message.content;
+    }
+    console.warn("Groq failed, falling back to Gemini:", data.error?.message || response.statusText);
+  } catch (err) {
+    console.warn("Groq network error, falling back to Gemini:", err.message);
+  }
+  return null;
+}
+
+// Provider 2: Google Gemini Fallback Call
+async function callGemini(promptText) {
+  if (!geminiApiKey) return null;
+  const models = ['gemini-3.8-flash', 'gemini-2.5-flash'];
+  for (const model of models) {
+    try {
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: promptText }] }]
+        })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
+        console.log(`Success with Gemini model: ${model}`);
+        return data.candidates[0].content.parts[0].text;
+      }
+      console.warn(`Gemini ${model} failed:`, data.error?.message || response.statusText);
+    } catch (err) {
+      console.warn(`Gemini ${model} error:`, err.message);
+    }
+  }
+  return null;
+}
 
 app.post('/api/ai-advisor', async (req, res) => {
   try {
@@ -32,38 +100,20 @@ Chashike shudhu 3-te short bullet point-e exact ebong actionable poramorsho dao 
 Kono unnecessary gyaan, bhumika ba English chara shudhu 3-te bullet point likho.
 `;
 
-    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${groqApiKey}`
-      },
-      body: JSON.stringify({
-        model: 'openai/gpt-oss-20b',
-        messages: [
-          {
-            role: 'system',
-            content: 'Tumi ekjon Krishi Bigyani. Shudhu Bangla te direct bullet points likhbe.'
-          },
-          {
-            role: 'user',
-            content: promptText
-          }
-        ],
-        temperature: 0.5,
-        max_tokens: 500
-      })
-    });
+    // Step 1: Groq try korbe
+    let advice = await callGroq(promptText);
 
-    const data = await groqResponse.json();
-
-    if (!groqResponse.ok) {
-      console.error("Groq API Error:", JSON.stringify(data));
-      return res.status(500).json({ error: data.error?.message || "Groq API call failed" });
+    // Step 2: Groq fail korle Gemini try korbe
+    if (!advice) {
+      advice = await callGemini(promptText);
     }
 
-    const aiText = data.choices?.[0]?.message?.content || "Poramorsho toiri kora jayni.";
-    res.json({ advice: aiText });
+    // Step 3: Jodi duto provider-i down thake tokhon ekta standard static advisor return korbe (zero downtime)
+    if (!advice) {
+      advice = `* সারের প্রথম কিস্তি জমি তৈরির শেষ চাষে এবং বাকি অংশ ফসলের বৃদ্ধির সময় ২-৩ বারে ভাগ করে প্রয়োগ করুন।\n* জমিতে অতিরিক্ত জল জমতে দেবেন না; পরিমিত সেচ ও নিষ্কাশনের সুব্যবস্থা রাখুন।\n* চারা রোপণের ১৫-২০ দিন পর নিয়মিত জমি পরিদর্শন করুন এবং পোকা বা ছত্রাকের লক্ষণ দেখলে নিকটস্থ কিসান মান্ডির পরামর্শ নিন।`;
+    }
+
+    res.json({ advice });
 
   } catch (err) {
     console.error("Server Catch Error:", err);
